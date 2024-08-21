@@ -1,0 +1,45 @@
+name: lks-prod-pipeline
+
+on:
+  push:
+    branches:
+      - prod
+
+jobs:
+  build:
+    runs-on: amazonlinux-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Update Docker to the latest version
+        run: sudo yum update && sudo apt-get install -y docker-ce docker-ce-cli containerd.io
+
+      - name: Set up AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Log in to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, tag, and push image to ECR
+        run: |
+          docker build -t lks-vote-image:latest .
+          docker tag lks-vote-image:latest ${{ steps.ecr-login.outputs.registry }}lks-vote-image:latest
+          docker push ${{ steps.ecr-login.outputs.registry }}lks-vote-image:latest
+
+  deploy:
+    needs: build
+    runs-on: amazonlinux-latest
+    steps:
+      - name: Update ECS Task Definition
+        run: |
+          aws ecs update-service --cluster my-cluster --service my-service --force-new-deployment
+
+      - name: Notify deployment success via SNS
+        run: |
+          aws sns publish --topic-arn ${{ secrets.SNS_TOPIC_ARN }} --message "Deployment to ECS was successful!"
