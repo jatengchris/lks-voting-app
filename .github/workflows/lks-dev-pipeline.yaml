@@ -7,7 +7,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: amazonlinux-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v2
@@ -34,28 +34,28 @@ jobs:
 
   pull_image_master:
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: amazonlinux-latest
     steps:
       - name: Pull updated image on master
-        run: ssh -o StrictHostKeyChecking=no ec2-user@${{ secrets.MASTER_IP }} "docker pull ${{ steps.ecr-login.outputs.registry }}${{ secrets.ECR_REPOSITORY }}:latest"
+        run: ssh -o StrictHostKeyChecking=no ec2-user@44.192.6.64 "docker pull ${{ steps.ecr-login.outputs.registry }}lks-vote-image:latest"
 
   pull_image_node1:
     needs: pull_image_master
     runs-on: ubuntu-latest
     steps:
       - name: Pull updated image on node1
-        run: ssh -o StrictHostKeyChecking=no ec2-user@${{ secrets.NODE1_IP }} "docker pull ${{ steps.ecr-login.outputs.registry }}${{ secrets.ECR_REPOSITORY }}:latest"
+        run: ssh -o StrictHostKeyChecking=no ec2-user@44.197.246.214 "docker pull ${{ steps.ecr-login.outputs.registry }}lks-vote-image:latest"
 
   pull_image_node2:
     needs: pull_image_node1
     runs-on: ubuntu-latest
     steps:
       - name: Pull updated image on node2
-        run: ssh -o StrictHostKeyChecking=no ec2-user@${{ secrets.NODE2_IP }} "docker pull ${{ steps.ecr-login.outputs.registry }}${{ secrets.ECR_REPOSITORY }}:latest"
+        run: ssh -o StrictHostKeyChecking=no ec2-user@54.174.157.253 "docker pull ${{ steps.ecr-login.outputs.registry }}lks-vote-image:latest"
 
   deploy:
     needs: pull_image_node2
     runs-on: ubuntu-latest
     steps:
       - name: Deploy application to Docker Swarm
-        run: ssh -o StrictHostKeyChecking=no ec2-user@${{ secrets.MASTER_IP }} "docker service update --image ${{ steps.ecr-login.outputs.registry }}${{ secrets.ECR_REPOSITORY }}:latest my-service"
+        run: ssh -o StrictHostKeyChecking=no ec2-user@44.192.6.64 "docker service update --image ${{ steps.ecr-login.outputs.registry }}lks-vote-image:latest my-service"
