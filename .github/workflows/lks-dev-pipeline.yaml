@@ -1,0 +1,61 @@
+name: lks-dev-pipeline
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Update Docker to the latest version
+        run: sudo apt-get update && sudo apt-get install -y docker-ce docker-ce-cli containerd.io
+
+      - name: Set up AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Log in to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, tag, and push image to ECR
+        run: |
+          docker build -t lks-voting-image .
+          docker tag lks-voting-image:latest 054452529490.dkr.ecr.us-east-1.amazonaws.com/lks-voting-image:latest
+          docker push 054452529490.dkr.ecr.us-east-1.amazonaws.com/lks-voting-image:latest
+
+  pull_image_master:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pull updated image on master
+        run: ssh -o StrictHostKeyChecking=no ec2-user@${{ secrets.MASTER_IP }} "docker pull ${{ steps.ecr-login.outputs.registry }}${{ secrets.ECR_REPOSITORY }}:latest"
+
+  pull_image_node1:
+    needs: pull_image_master
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pull updated image on node1
+        run: ssh -o StrictHostKeyChecking=no ec2-user@${{ secrets.NODE1_IP }} "docker pull ${{ steps.ecr-login.outputs.registry }}${{ secrets.ECR_REPOSITORY }}:latest"
+
+  pull_image_node2:
+    needs: pull_image_node1
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pull updated image on node2
+        run: ssh -o StrictHostKeyChecking=no ec2-user@${{ secrets.NODE2_IP }} "docker pull ${{ steps.ecr-login.outputs.registry }}${{ secrets.ECR_REPOSITORY }}:latest"
+
+  deploy:
+    needs: pull_image_node2
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy application to Docker Swarm
+        run: ssh -o StrictHostKeyChecking=no ec2-user@${{ secrets.MASTER_IP }} "docker service update --image ${{ steps.ecr-login.outputs.registry }}${{ secrets.ECR_REPOSITORY }}:latest my-service"
